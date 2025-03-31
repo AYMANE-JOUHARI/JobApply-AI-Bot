@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>AI Job Bot</title>
+</head>
+<body>
+  <h2>AI Job Bot Settings</h2>
+
+  <!-- Auto-Apply and Match Score Controls -->
+  <label>Auto-Apply: <input type="checkbox" id="autoApply"></label><br>
+  <label>Min Match Score: <input type="number" id="minScore" value="75"></label><br>
+
+  <!-- PDF Resume Upload -->
+  <label for="resumeUpload">Upload Resume (PDF):</label>
+  <input type="file" id="resumeUpload" accept="application/pdf"><br>
+
+  <button id="saveSettings">Save Settings</button>
+
+  <script src="popup.js"></script>
+  
+  <script type="module" src="popup.js"></script>
+ 
+</body>
+</html>
