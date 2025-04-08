@@ -1,24 +1,37 @@
 <!DOCTYPE html>
-<html>
+<html lang="en" data-theme="light">
 <head>
-  <title>AI Job Bot</title>
-</head>
-<body>
-  <h2>AI Job Bot Settings</h2>
-
-  <!-- Auto-Apply and Match Score Controls -->
-  <label>Auto-Apply: <input type="checkbox" id="autoApply"></label><br>
-  <label>Min Match Score: <input type="number" id="minScore" value="75"></label><br>
-
-  <!-- PDF Resume Upload -->
-  <label for="resumeUpload">Upload Resume (PDF):</label>
-  <input type="file" id="resumeUpload" accept="application/pdf"><br>
-
-  <button id="saveSettings">Save Settings</button>
-
-  <script src="popup.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" 
+        content="default-src 'self';
+                style-src 'self' 'unsafe-inline';
+                script-src 'self' 'wasm-unsafe-eval';
+                connect-src https://*.linkedin.com https://api.openai.com">
+  <title>JobApply AI Bot</title>
   
-  <script type="module" src="popup.js"></script>
- 
+  <!-- Local CSS -->
+  <link rel="stylesheet" href="/css/tailwind.css">
+  
+  <!-- Production React -->
+  <script src="/scripts/react.production.min.js"></script>
+  <script src="/scripts/react-dom.production.min.js"></script>
+</head>
+<body class="w-80 min-h-[400px] bg-gray-50 overflow-y-auto">
+  <div id="root" role="main" aria-live="polite">
+    <!-- Enhanced loading state -->
+    <div class="loading-spinner" role="status" aria-label="Loading application">
+      <span class="sr-only">Loading extension...</span>
+    </div>
+  </div>
+
+  <!-- Enhanced noscript handling -->
+  <noscript>
+    <div class="p-4 text-red-600 border border-red-200 bg-red-50 rounded m-2">
+      ❌ This extension requires JavaScript to function properly. Please enable JavaScript in your browser settings.
+    </div>
+  </noscript>
+
+  <script src="/popup.js"></script>
 </body>
 </html>
