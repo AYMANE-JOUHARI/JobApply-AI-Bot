@@ -1,220 +1,204 @@
-// content.js - Complete Revised Version
+// content.js - Optimized LinkedIn Job Scraper
 
 // ========================
-// PDF.js Initialization
+// Configuration
 // ========================
-let pdfjsLib;
-let pdfInitialized = false;
+const CONFIG = {
+  SELECTORS: {
+    JOB_TITLE: [
+      '.jobs-unified-top-card__job-title',
+      '.job-details-jobs-unified-top-card__job-title',
+      '[data-test-job-title]'
+    ],
+    COMPANY: [
+      '.jobs-unified-top-card__company-name',
+      '.job-details-jobs-unified-top-card__company-name',
+      '[data-test-hiring-company-name]'
+    ],
+    LOCATION: [
+      '.jobs-unified-top-card__bullet',
+      '.job-details-jobs-unified-top-card__location',
+      '[data-test-job-location]'
+    ],
+    DESCRIPTION: [
+      '.jobs-description__content',
+      '.job-details-jobs-description__content',
+      '[data-test-job-description-text]'
+    ],
+    BUTTONS: {
+      SEE_MORE: 'button.jobs-description__see-more-button, button.job-details-how-you-match__see-more',
+      APPLY: 'button.jobs-apply-button, button.job-details-apply-button',
+      SUBMIT: 'button[aria-label="Submit application"], button[data-test-modal-close-btn]'
+    }
+  },
+  TIMEOUTS: {
+    PAGE_LOAD: 3000,
+    ELEMENT_WAIT: 2000,
+    CLICK_DELAY: 1500
+  },
+  MAX_RETRIES: 3
+};
 
-const initializePDF = async () => {
-  if (pdfInitialized) return;
+// ========================
+// Core Utilities
+// ========================
+const waitFor = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+const safeQuerySelector = (selector) => document.querySelector(selector) || null;
+
+const getElementText = (element) => 
+  element?.textContent?.trim()?.replace(/\s+/g, ' ') || '';
+
+const findFirstValidElement = (selectors) => {
+  if (typeof selectors === 'string') {
+    return safeQuerySelector(selectors);
+  }
   
-  try {
-    const pdfjsUrl = chrome.runtime.getURL('scripts/pdf.mjs');
-    const workerUrl = chrome.runtime.getURL('scripts/pdf.worker.mjs');
-    
-    // Dynamic ES module import with fallback
-    const module = await import(pdfjsUrl);
-    pdfjsLib = module;
-    pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
-    pdfInitialized = true;
-    console.debug('PDF.js initialized successfully');
-  } catch (error) {
-    console.error('PDF.js initialization failed:', error);
-    throw new Error('PDF processing unavailable');
-  }
-};
-
-// ========================
-// DOM Selectors & Utilities
-// ========================
-const SELECTORS = {
-  TITLE: [
-    '.jobs-unified-top-card__job-title',
-    '.job-details-jobs-unified-top-card__job-title',
-    '[data-test-job-title]'
-  ],
-  COMPANY: [
-    '.jobs-unified-top-card__company-name',
-    '.job-details-jobs-unified-top-card__company-name',
-    '[data-test-hiring-company-name]'
-  ],
-  LOCATION: [
-    '.jobs-unified-top-card__bullet',
-    '.job-details-jobs-unified-top-card__location',
-    '[data-test-job-location]'
-  ],
-  DESCRIPTION: [
-    '.jobs-description__content',
-    '.job-details-jobs-description__content',
-    '[data-test-job-description-text]'
-  ],
-  BUTTONS: {
-    SEE_MORE: [
-      'button.jobs-description__see-more-button',
-      'button.job-details-how-you-match__see-more'
-    ],
-    APPLY: [
-      'button.jobs-apply-button',
-      'button.job-details-apply-button'
-    ],
-    SUBMIT: [
-      'button[aria-label="Submit application"]',
-      'button[data-test-modal-close-btn]'
-    ]
-  }
-};
-
-const findElement = (selectors) => {
   for (const selector of selectors) {
-    const element = document.querySelector(selector);
+    const element = safeQuerySelector(selector);
     if (element) return element;
   }
   return null;
 };
 
-const getSafeText = (element) => 
-  element?.textContent?.trim()?.replace(/\s+/g, ' ') || '';
-
 // ========================
-// Core Functionality
+// DOM Interaction Helpers
 // ========================
-const expandDescription = () => {
-  const seeMoreButton = findElement(SELECTORS.BUTTONS.SEE_MORE);
-  if (seeMoreButton) {
+const expandJobDescription = async () => {
+  const seeMoreButton = findFirstValidElement(CONFIG.SELECTORS.BUTTONS.SEE_MORE);
+  if (seeMoreButton && seeMoreButton.offsetParent !== null) {
     seeMoreButton.click();
-    return new Promise(resolve => setTimeout(resolve, 500));
-  }
-  return Promise.resolve();
-};
-
-const scrapeJobDetails = async () => {
-  try {
-    await expandDescription();
-    
-    return {
-      title: getSafeText(findElement(SELECTORS.TITLE)),
-      company: getSafeText(findElement(SELECTORS.COMPANY)),
-      location: getSafeText(findElement(SELECTORS.LOCATION)),
-      description: [
-        findElement(SELECTORS.DESCRIPTION),
-        document.querySelector('.jobs-description-details__list'),
-        document.querySelector('.job-details-how-you-match__skills-list')
-      ].map(el => getSafeText(el)).join('\n'),
-      url: window.location.href.split('?')[0],
-      postedDate: getSafeText(document.querySelector(
-        '.jobs-unified-top-card__posted-date, ' +
-        '.job-details-jobs-unified-top-card__posted-date'
-      ))
-    };
-  } catch (error) {
-    console.error('Scraping error:', error);
-    return { error: 'Failed to extract job details' };
+    await waitFor(CONFIG.TIMEOUTS.CLICK_DELAY);
   }
 };
 
-const handleApplication = async () => {
-  try {
-    const applyButton = findElement(SELECTORS.BUTTONS.APPLY);
-    if (!applyButton) return { error: 'Apply button not found' };
-
-    applyButton.click();
-    
-    // Handle multi-step application flow
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    const submitButton = findElement(SELECTORS.BUTTONS.SUBMIT);
-    if (submitButton) {
-      submitButton.click();
-      return { success: true };
+const clickWithRetry = async (selector, retries = CONFIG.MAX_RETRIES) => {
+  for (let i = 0; i < retries; i++) {
+    const element = findFirstValidElement(selector);
+    if (element && element.offsetParent !== null) {
+      element.click();
+      await waitFor(CONFIG.TIMEOUTS.CLICK_DELAY);
+      return true;
     }
-    return { error: 'Submission failed' };
+    await waitFor(500);
+  }
+  return false;
+};
+
+// ========================
+// Data Extraction
+// ========================
+const extractJobDetails = async () => {
+  await expandJobDescription();
+  
+  // Wait for content to load
+  await waitFor(CONFIG.TIMEOUTS.ELEMENT_WAIT);
+
+  const titleElement = findFirstValidElement(CONFIG.SELECTORS.JOB_TITLE);
+  const companyElement = findFirstValidElement(CONFIG.SELECTORS.COMPANY);
+  const locationElement = findFirstValidElement(CONFIG.SELECTORS.LOCATION);
+  const descriptionElement = findFirstValidElement(CONFIG.SELECTORS.DESCRIPTION);
+
+  return {
+    title: getElementText(titleElement),
+    company: getElementText(companyElement),
+    location: getElementText(locationElement),
+    description: getElementText(descriptionElement),
+    url: window.location.href.split('?')[0],
+    timestamp: new Date().toISOString(),
+    fullPageText: document.body.innerText.substring(0, 10000) // Safety limit
+  };
+};
+
+// ========================
+// Application Automation
+// ========================
+const handleJobApplication = async () => {
+  try {
+    // Initial apply button click
+    const applied = await clickWithRetry(CONFIG.SELECTORS.BUTTONS.APPLY);
+    if (!applied) return { error: 'Apply button not found or clickable' };
+
+    // Handle multi-step application flow
+    await waitFor(CONFIG.TIMEOUTS.PAGE_LOAD);
+    
+    // Final submission
+    const submitted = await clickWithRetry(CONFIG.SELECTORS.BUTTONS.SUBMIT);
+    return submitted 
+      ? { success: true } 
+      : { error: 'Failed to find submit button' };
   } catch (error) {
     console.error('Application error:', error);
-    return { error: 'Application process failed' };
+    return { error: error.message };
   }
 };
 
 // ========================
-// Core Functionality (with PDF init checks)
-// ========================
-const processResumePDF = async (file) => {
-  try {
-    if (!pdfInitialized) await initializePDF();
-    
-    const reader = new FileReader();
-    return new Promise((resolve, reject) => {
-      reader.onload = async ({ target }) => {
-        try {
-          const pdf = await pdfjsLib.getDocument({ 
-            data: new Uint8Array(target.result) 
-          }).promise;
-          
-          let text = '';
-          for (let i = 1; i <= pdf.numPages; i++) {
-            const page = await pdf.getPage(i);
-            const content = await page.getTextContent();
-            text += content.items.map(item => item.str).join(' ');
-          }
-          resolve(text);
-        } catch (error) {
-          reject(error);
-        }
-      };
-      reader.readAsArrayBuffer(file);
-    });
-  } catch (error) {
-    console.error('PDF processing failed:', error);
-    throw error;
-  }
-};
-
-// ========================
-// Message Handling (with init safeguard)
+// Message Handling
 // ========================
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   const handleRequest = async () => {
     try {
-      switch (request.action) {
-        case 'processResume':
-          return await processResumePDF(request.file);
+      switch (request.type) {
+        case 'SCRAPE_JOB_DETAILS':
+          return await extractJobDetails();
           
-        case 'getJobDetails':
-          return await scrapeJobDetails();
-          
-        case 'applyToJob':
-          return await handleApplication();
+        case 'AUTO_APPLY':
+          return await handleJobApplication();
           
         default:
-          return { error: 'Unknown action' };
+          return { error: 'Unknown action requested' };
       }
     } catch (error) {
-      console.error('Request failed:', error);
+      console.error('Request handling failed:', error);
       return { error: error.message };
     }
   };
 
+  // Execute and respond
   handleRequest().then(sendResponse);
-  return true;
+  return true; // Required for async response
 });
-
 
 // ========================
 // DOM Observation
 // ========================
-const observer = new MutationObserver(() => {
-  scrapeJobDetails().then(details => {
-    chrome.runtime.sendMessage({
-      action: 'jobContentUpdated',
-      details
-    });
+const setupMutationObserver = () => {
+  const observer = new MutationObserver(async () => {
+    if (window.location.href.includes('/jobs/view/')) {
+      const details = await extractJobDetails();
+      chrome.runtime.sendMessage({
+        type: 'JOB_CONTENT_UPDATED',
+        details
+      });
+    }
   });
-});
 
-observer.observe(document.body, {
-  subtree: true,
-  childList: true,
-  attributes: false
-});
+  observer.observe(document.body, {
+    subtree: true,
+    childList: true,
+    attributes: false,
+    characterData: false
+  });
 
-console.log('Content script initialized');
+  return observer;
+};
+
+// ========================
+// Initialization
+// ========================
+const initializeContentScript = () => {
+  // Set up DOM observer
+  setupMutationObserver();
+  
+  // Notify background script we're ready
+  chrome.runtime.sendMessage({ type: 'CONTENT_SCRIPT_READY' });
+  
+  console.debug('LinkedIn Job Scraper initialized');
+};
+
+// Start the content script
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initializeContentScript);
+} else {
+  initializeContentScript();
+}
